@@ -12,23 +12,24 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.Bundle
-import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
-import android.widget.Button
 import android.widget.TextView
+import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.appcompat.app.AppCompatActivity
 import com.example.myapplication.R
+import com.google.android.gms.wearable.MessageClient
+import com.google.android.gms.wearable.MessageEvent
+import com.google.android.gms.wearable.Wearable
 import org.json.JSONException
 import org.json.JSONObject
-import java.io.File
 import java.io.FileOutputStream
-import java.io.FileWriter
 import java.io.IOException
 import java.time.LocalDateTime
 
-class MainActivity : ComponentActivity() {
+class MainActivity : ComponentActivity(), MessageClient.OnMessageReceivedListener {
 
     private val sensorManager: SensorManager by lazy {
         this.getSystemService(Context.SENSOR_SERVICE) as SensorManager
@@ -37,7 +38,7 @@ class MainActivity : ComponentActivity() {
         sensorManager.getDefaultSensor(Sensor.TYPE_LINEAR_ACCELERATION)
     }
     private val rotSensor: Sensor by lazy {
-        sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
+        sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
     }
 
     private val accL: SensorEventListener by lazy {
@@ -60,11 +61,23 @@ class MainActivity : ComponentActivity() {
 
     private lateinit var jsonObject: JSONObject
     private val handler = Handler(Looper.getMainLooper())
-    private var fileWriter: FileWriter? = null
 
-    private lateinit var startButton: Button
-    private lateinit var pauseButton: Button
+    private var activityContext: Context? = null
 
+    private val TAG_MESSAGE_RECEIVED = "receive1"
+    private val APP_OPEN_WEARABLE_PAYLOAD_PATH = "/APP_OPEN_WEARABLE_PAYLOAD"
+
+    private var mobileDeviceConnected: Boolean = false
+
+
+    // Payload string items
+    private val wearableAppCheckPayloadReturnACK = "AppOpenWearableACK"
+
+    private val MESSAGE_ITEM_RECEIVED_PATH: String = "/message-item-received"
+
+
+    private var messageEvent: MessageEvent? = null
+    private var mobileNodeUri: String? = null
 
     @Override
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -82,29 +95,12 @@ class MainActivity : ComponentActivity() {
         sensorManager.registerListener(accL, accSensor, 50000)
         sensorManager.registerListener(rotL, rotSensor, 50000)
 
-        startButton = findViewById(R.id.start)
-        pauseButton = findViewById(R.id.pause)
-        pauseButton.isEnabled = false
-
-        startButton.setOnClickListener {
-            jsonObject = JSONObject()
-
-            startButton.isEnabled = false
-            pauseButton.isEnabled = true
-
-            startRecording()
-        }
-
-        pauseButton.setOnClickListener {
-            startButton.isEnabled = true
-            pauseButton.isEnabled = false
-
-            stopRecording()
-        }
+        activityContext = this
     }
 
-    private fun startRecording() {
-        var now = System.currentTimeMillis()
+    fun startRecording() {
+        val now = System.currentTimeMillis()
+        jsonObject = JSONObject()
         handler.postDelayed(object: Runnable {
             override fun run() {
                 try {
@@ -134,9 +130,10 @@ class MainActivity : ComponentActivity() {
         }, 50)
     }
 
-    private fun stopRecording() {
-        saveSensorData(jsonObject.toString())
+    fun stopRecording(): JSONObject {
+        //saveSensorData(jsonObject.toString())
         handler.removeCallbacksAndMessages(null)
+        return jsonObject
     }
 
     private fun saveSensorData(data: String) {
@@ -157,6 +154,8 @@ class MainActivity : ComponentActivity() {
         super.onPause()
         sensorManager.unregisterListener(accL)
         sensorManager.unregisterListener(rotL)
+
+        Wearable.getMessageClient(activityContext!!).removeListener(this)
     }
 
     @Override
@@ -164,13 +163,8 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         sensorManager.registerListener(accL, accSensor, 50000)
         sensorManager.registerListener(rotL, rotSensor, 50000)
-    }
 
-    @Override
-    override fun onDestroy() {
-        super.onDestroy()
-        sensorManager.unregisterListener(accL)
-        sensorManager.unregisterListener(rotL)
+        Wearable.getMessageClient(activityContext!!).addListener(this)
     }
 
     private class AccListener(private val view: TextView): SensorEventListener {
@@ -197,5 +191,80 @@ class MainActivity : ComponentActivity() {
         override fun onAccuracyChanged(p0: Sensor?, p1: Int) {
         }
 
+    }
+
+    override fun onMessageReceived(p0: MessageEvent) {
+
+        try {
+            val s1 = String(p0.data)
+            val path: String = p0.path
+
+            Log.d(TAG_MESSAGE_RECEIVED, "Message received: $path")
+            Toast.makeText(activityContext, "$path, $s1 받음", Toast.LENGTH_LONG).show()
+
+
+            //Send back a message back to the source node
+            //This acknowledges that the receiver activity is open
+            if (path.isNotEmpty() && path == APP_OPEN_WEARABLE_PAYLOAD_PATH) {
+                try {
+                    // Get the node id of the node that created the data item from the host portion of
+                    // the uri.
+                    val nodeId: String = p0.sourceNodeId
+                    // Set the data of the message to be the bytes of the Uri.
+                    val returnPayloadAck = wearableAppCheckPayloadReturnACK
+                    val payload: ByteArray = returnPayloadAck.toByteArray()
+
+                    // Send the rpc
+                    // Instantiates clients without member variables, as clients are inexpensive to
+                    // create. (They are cached and shared between GoogleApi instances.)
+                    val sendMessageTask = Wearable.getMessageClient(activityContext!!)
+                            .sendMessage(nodeId, APP_OPEN_WEARABLE_PAYLOAD_PATH, payload)
+
+                    Log.d(TAG_MESSAGE_RECEIVED, "ACK with payload: $returnPayloadAck")
+
+                    messageEvent = p0
+                    mobileNodeUri = p0.sourceNodeId
+
+                    sendMessageTask.addOnCompleteListener {
+                        if (it.isSuccessful) {
+                            Log.d(TAG_MESSAGE_RECEIVED, "Message sent successfully")
+
+                            mobileDeviceConnected = true
+                        } else {
+                            Log.d(TAG_MESSAGE_RECEIVED, "Message failed.")
+                        }
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }//emd of if
+            else if (path.isNotEmpty() && path == MESSAGE_ITEM_RECEIVED_PATH) {
+                if (s1.isNotEmpty() && s1 == "start") {
+                    Log.d("request", "start")
+
+                    startRecording()
+                } else if (s1.isNotEmpty() && s1 == "stop") {
+                    Log.d("request", "stop")
+
+                    val nodeId: String = p0.sourceNodeId
+
+                    val sensorData = stopRecording()
+                    val sendMessageTask = Wearable.getMessageClient(activityContext!!)
+                        .sendMessage(nodeId, MESSAGE_ITEM_RECEIVED_PATH, sensorData.toString().toByteArray())
+
+                    sendMessageTask.addOnCompleteListener {
+                        if (it.isSuccessful) {
+                            Log.d("send1", "Message sent successfully")
+                            Toast.makeText(activityContext, "json 전송 성공", Toast.LENGTH_LONG).show()
+                        } else {
+                            Log.d("send1", "Message failed.")
+                            Toast.makeText(activityContext, "json 전송 실패", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 }

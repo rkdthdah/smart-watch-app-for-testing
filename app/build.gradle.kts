@@ -49,6 +49,7 @@ android {
 }
 
 dependencies {
+    implementation("com.google.android.gms:play-services-wearable:18.1.0")
 
     implementation("androidx.core:core-ktx:1.9.0")
     implementation("com.google.android.gms:play-services-wearable:18.1.0")
@@ -67,6 +68,7 @@ dependencies {
     implementation("com.google.android.horologist:horologist-compose-tools:0.1.5")
     implementation("com.google.android.horologist:horologist-tiles:0.1.5")
     implementation("androidx.wear.watchface:watchface-complications-data-source-ktx:1.1.1")
+    implementation("androidx.appcompat:appcompat:1.6.1")
     androidTestImplementation(platform("androidx.compose:compose-bom:2022.10.00"))
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-tooling")

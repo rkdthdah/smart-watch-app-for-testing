@@ -8,6 +8,12 @@
     android:keepScreenOn="true">
 
     <TextView
+        android:id="@+id/connect"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text=" " />
+
+    <TextView
         android:id="@+id/acc_name"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
@@ -30,24 +36,5 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="rot value" />
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:gravity="center">
-
-        <Button
-            android:id="@+id/pause"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="중지" />
-
-        <Button
-            android:id="@+id/start"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="기록시작" />
-
-    </LinearLayout>
 
 </LinearLayout>
